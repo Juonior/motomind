@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     
     # OBD настройки
     OBD_PORT: Optional[str] = Field(default=None, description="Порт OBD адаптера (например, /dev/rfcomm0 или COM3)")
+    OBD_MAC: Optional[str] = Field(default=None, description="MAC адрес Bluetooth OBD адаптера (для автоматического создания RFCOMM порта)")
     OBD_PROTOCOL: Optional[str] = Field(default=None, description="Протокол OBD (auto если None)")
     
     # Настройки бота

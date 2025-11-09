@@ -19,14 +19,22 @@ class OBDHandler:
             port = settings.OBD_PORT or obd.scan_serial()
             if not port:
                 logger.error("OBD адаптер не найден")
+                if settings.OBD_MAC:
+                    logger.info(f"OBD_MAC указан: {settings.OBD_MAC}, но порт не найден. Проверьте, что RFCOMM порт создан.")
                 return False
             
+            # Логирование информации о подключении
             logger.info(f"Подключение к OBD на порту: {port}")
+            if settings.OBD_MAC:
+                logger.debug(f"MAC адрес адаптера: {settings.OBD_MAC}")
+            if settings.OBD_PROTOCOL:
+                logger.debug(f"Используется протокол: {settings.OBD_PROTOCOL}")
+            
             # Если указан протокол, используем его, иначе автоопределение
             if settings.OBD_PROTOCOL:
-                self.connection = obd.OBD(port, protocol=settings.OBD_PROTOCOL)
+                self.connection = obd.OBD(port, protocol=settings.OBD_PROTOCOL, timeout=30)
             else:
-                self.connection = obd.OBD(port)
+                self.connection = obd.OBD(port, timeout=30)
             self.is_connected = self.connection.status == obd.OBDStatus.CAR_CONNECTED
             
             if self.is_connected:
