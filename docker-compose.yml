@@ -1,0 +1,21 @@
+services:
+  mercedes-obd-bot:
+    build: .
+    container_name: mercedes-obd-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    privileged: true  # Необходимо для доступа к Bluetooth устройствам
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Для USB OBD адаптеров
+      - /dev/rfcomm0:/dev/rfcomm0  # Для Bluetooth OBD адаптеров
+    volumes:
+      - /dev:/dev  # Доступ к устройствам
+    network_mode: host  # Для работы с Bluetooth может потребоваться host network
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OBD_PORT=${OBD_PORT:-}
+      - OBD_MAC=${OBD_MAC:-}
+      - OBD_PROTOCOL=${OBD_PROTOCOL:-}
+      - ADMIN_IDS=${ADMIN_IDS:-}
+
