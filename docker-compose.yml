@@ -18,4 +18,17 @@ services:
       - OBD_MAC=${OBD_MAC:-}
       - OBD_PROTOCOL=${OBD_PROTOCOL:-}
       - ADMIN_IDS=${ADMIN_IDS:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-deepseek-chat}
+      - REDIS_URL=${REDIS_URL:-redis://127.0.0.1:6379/0}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: motomind-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    network_mode: host
 

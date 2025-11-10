@@ -4,3 +4,5 @@ pydantic-settings==2.1.0
 obd==0.7.2
 python-dotenv==1.0.0
 pyserial==3.5
+openai>=1.40.0
+redis>=5.0.0

@@ -1,12 +1,15 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import settings
-from obd_handler import OBDHandler
+from app.settings import settings
+from app.services.obd_handler import OBDHandler
+from app.clients.llm_client import LLMClient
+from app.storage.context_store import RedisContextStore
+from app.handlers import register_chat_handlers
 
 # Настройка логирования
 logging.basicConfig(
@@ -18,9 +21,22 @@ logger = logging.getLogger(__name__)
 # Инициализация бота и диспетчера
 bot = Bot(token=settings.BOT_TOKEN)
 dp = Dispatcher()
+router = Router()
 
 # Инициализация OBD обработчика
 obd_handler = OBDHandler()
+
+# Инициализация LLM и контекста
+llm_client = LLMClient(
+    api_key=settings.OPENAI_API_KEY,
+    base_url=settings.OPENAI_BASE_URL,
+    model=settings.OPENAI_MODEL,
+)
+context_store = RedisContextStore(redis_url=settings.REDIS_URL, max_history_messages=20)
+
+# Регистрация обработчиков чата (текстовые сообщения)
+register_chat_handlers(router, llm_client, context_store)
+dp.include_router(router)
 
 
 def format_errors(errors: list) -> str:
@@ -232,6 +248,7 @@ async def main():
     finally:
         obd_handler.disconnect()
         await bot.session.close()
+        await context_store.close()
 
 
 if __name__ == "__main__":

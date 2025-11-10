@@ -24,6 +24,6 @@ COPY init_bluetooth.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init_bluetooth.sh
 
 # Запуск бота через скрипт инициализации
-ENTRYPOINT ["/usr/local/bin/init_bluetooth.sh"]
+# ENTRYPOINT ["/usr/local/bin/init_bluetooth.sh"]
 CMD ["python", "bot.py"]
 
