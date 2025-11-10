@@ -35,12 +35,22 @@ class OBDHandler:
                 self.connection = obd.OBD(port, protocol=settings.OBD_PROTOCOL, timeout=30)
             else:
                 self.connection = obd.OBD(port, timeout=30)
-            self.is_connected = self.connection.status == obd.OBDStatus.CAR_CONNECTED
+            
+            # status может быть как свойством, так и методом в зависимости от версии библиотеки
+            try:
+                if callable(self.connection.status):
+                    status = self.connection.status()
+                else:
+                    status = self.connection.status
+            except:
+                status = None
+            
+            self.is_connected = status == obd.OBDStatus.CAR_CONNECTED
             
             if self.is_connected:
                 logger.info("Успешно подключено к OBD")
             else:
-                logger.warning(f"Статус подключения: {self.connection.status}")
+                logger.warning(f"Статус подключения: {status}")
             
             return self.is_connected
         except Exception as e:
@@ -107,8 +117,12 @@ class OBDHandler:
             else:
                 return None
             
-            if response.value:
-                return float(response.value.magnitude)
+            # Проверяем наличие значения без использования bool() для избежания ошибки с offset unit
+            if response.value is not None:
+                try:
+                    return float(response.value.magnitude)
+                except (AttributeError, ValueError):
+                    return None
             return None
         except Exception as e:
             logger.error(f"Ошибка получения температуры: {e}")
@@ -121,8 +135,16 @@ class OBDHandler:
         
         try:
             response = self.connection.query(obd.commands.RPM)
-            if response.value:
-                return float(response.value.magnitude)
+            # Проверяем наличие значения (может быть 0, что тоже валидно)
+            if response.value is not None:
+                try:
+                    rpm = float(response.value.magnitude)
+                    # RPM должна быть >= 0
+                    if rpm >= 0:
+                        return rpm
+                except (AttributeError, ValueError, TypeError) as e:
+                    logger.debug(f"Ошибка преобразования RPM: {e}")
+                    return None
             return None
         except Exception as e:
             logger.error(f"Ошибка получения RPM: {e}")
@@ -135,8 +157,16 @@ class OBDHandler:
         
         try:
             response = self.connection.query(obd.commands.SPEED)
-            if response.value:
-                return float(response.value.magnitude)
+            # Проверяем наличие значения (может быть 0, что тоже валидно)
+            if response.value is not None:
+                try:
+                    speed = float(response.value.magnitude)
+                    # Скорость должна быть >= 0
+                    if speed >= 0:
+                        return speed
+                except (AttributeError, ValueError, TypeError) as e:
+                    logger.debug(f"Ошибка преобразования скорости: {e}")
+                    return None
             return None
         except Exception as e:
             logger.error(f"Ошибка получения скорости: {e}")
@@ -147,14 +177,31 @@ class OBDHandler:
         if not self.is_connected or not self.connection:
             return None
         
+        # Пробуем основную команду FUEL_LEVEL
         try:
             response = self.connection.query(obd.commands.FUEL_LEVEL)
-            if response.value:
-                return float(response.value.magnitude)
-            return None
+            # Проверяем наличие значения (может быть 0, что тоже валидно)
+            if response.value is not None:
+                try:
+                    fuel_level = float(response.value.magnitude)
+                    # Уровень топлива должен быть >= 0 и <= 100
+                    if 0 <= fuel_level <= 100:
+                        return fuel_level
+                except (AttributeError, ValueError, TypeError) as e:
+                    logger.debug(f"Ошибка преобразования уровня топлива: {e}")
+                    return None
         except Exception as e:
-            logger.error(f"Ошибка получения уровня топлива: {e}")
+            # Если команда не поддерживается, это нормально - не логируем как ошибку
+            error_str = str(e).lower()
+            if 'not supported' in error_str or 'unsupported' in error_str:
+                logger.debug(f"Команда FUEL_LEVEL не поддерживается автомобилем")
+            else:
+                logger.debug(f"Ошибка получения уровня топлива: {e}")
             return None
+        
+        # Если основная команда не дала результата, пробуем альтернативные
+        # (если они есть в библиотеке)
+        return None
     
     def get_engine_load(self) -> Optional[float]:
         """Получение нагрузки двигателя (%)"""
@@ -163,8 +210,16 @@ class OBDHandler:
         
         try:
             response = self.connection.query(obd.commands.ENGINE_LOAD)
-            if response.value:
-                return float(response.value.magnitude)
+            # Проверяем наличие значения (может быть 0, что тоже валидно)
+            if response.value is not None:
+                try:
+                    engine_load = float(response.value.magnitude)
+                    # Нагрузка двигателя должна быть >= 0 и <= 100
+                    if 0 <= engine_load <= 100:
+                        return engine_load
+                except (AttributeError, ValueError, TypeError) as e:
+                    logger.debug(f"Ошибка преобразования нагрузки двигателя: {e}")
+                    return None
             return None
         except Exception as e:
             logger.error(f"Ошибка получения нагрузки двигателя: {e}")

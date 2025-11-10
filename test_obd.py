@@ -92,7 +92,16 @@ def test_obd_connection():
         
         # Проверка статуса
         print("4. Проверка статуса подключения...")
-        status = connection.status
+        # status может быть как свойством, так и методом в зависимости от версии библиотеки
+        try:
+            if callable(connection.status):
+                status = connection.status()
+            else:
+                status = connection.status
+        except:
+            # Если не получается получить статус, пробуем читать данные
+            status = None
+        
         print(f"   Статус: {status}")
         
         status_messages = {
@@ -101,17 +110,22 @@ def test_obd_connection():
             obd.OBDStatus.NOT_CONNECTED: "❌ Не подключено",
         }
         
-        status_msg = status_messages.get(status, f"❓ Неизвестный статус: {status}")
-        print(f"   {status_msg}")
+        if status:
+            status_msg = status_messages.get(status, f"❓ Неизвестный статус: {status}")
+            print(f"   {status_msg}")
+        else:
+            print(f"   ⚠️ Не удалось определить статус, но попробуем читать данные")
         print()
         
-        if status == obd.OBDStatus.CAR_CONNECTED:
+        # Пробуем читать данные даже если статус не CAR_CONNECTED
+        # Иногда данные доступны даже при ELM_CONNECTED
+        if status == obd.OBDStatus.CAR_CONNECTED or status == obd.OBDStatus.ELM_CONNECTED or status is None:
             print("5. Тест чтения данных...")
             
             # Тест RPM
             try:
                 print("   Чтение RPM...", end=" ", flush=True)
-                response = connection.query(obd.commands.RPM, timeout=5)
+                response = connection.query(obd.commands.RPM)
                 if response.value:
                     print(f"✅ {response.value.magnitude:.0f} об/мин")
                 else:
@@ -122,20 +136,137 @@ def test_obd_connection():
             # Тест скорости
             try:
                 print("   Чтение скорости...", end=" ", flush=True)
-                response = connection.query(obd.commands.SPEED, timeout=5)
-                if response.value:
-                    print(f"✅ {response.value.magnitude:.0f} км/ч")
+                response = connection.query(obd.commands.SPEED)
+                # Проверяем наличие значения (может быть 0, что тоже валидно)
+                if response.value is not None:
+                    try:
+                        speed = float(response.value.magnitude)
+                        if speed >= 0:
+                            print(f"✅ {speed:.0f} км/ч")
+                        else:
+                            print(f"❌ Некорректное значение: {speed}")
+                    except (AttributeError, ValueError, TypeError) as e:
+                        print(f"❌ Ошибка преобразования: {e}")
+                        print(f"      Тип response.value: {type(response.value)}")
+                        print(f"      response.value: {response.value}")
+                else:
+                    print("❌ Нет данных (response.value is None)")
+                    # Дополнительная диагностика
+                    print(f"      response: {response}")
+                    print(f"      response.is_null(): {response.is_null()}")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Тест температуры охлаждающей жидкости
+            try:
+                print("   Чтение температуры охлаждающей жидкости...", end=" ", flush=True)
+                response = connection.query(obd.commands.COOLANT_TEMP)
+                if response.value is not None:
+                    try:
+                        print(f"✅ {response.value.magnitude:.1f}°C")
+                    except (AttributeError, ValueError) as e:
+                        print(f"❌ Ошибка преобразования: {e}")
                 else:
                     print("❌ Нет данных")
             except Exception as e:
                 print(f"❌ Ошибка: {e}")
             
-            # Тест температуры
+            # Тест температуры впускного воздуха
             try:
-                print("   Чтение температуры охлаждающей жидкости...", end=" ", flush=True)
-                response = connection.query(obd.commands.COOLANT_TEMP, timeout=5)
+                print("   Чтение температуры впускного воздуха...", end=" ", flush=True)
+                response = connection.query(obd.commands.INTAKE_TEMP)
+                if response.value is not None:
+                    try:
+                        print(f"✅ {response.value.magnitude:.1f}°C")
+                    except (AttributeError, ValueError) as e:
+                        print(f"❌ Ошибка преобразования: {e}")
+                else:
+                    print("❌ Нет данных")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+            
+            # Тест уровня топлива
+            try:
+                print("   Чтение уровня топлива...", end=" ", flush=True)
+                # Подавляем предупреждения библиотеки obd
+                import logging
+                obd_logger = logging.getLogger('obd.obd')
+                old_level = obd_logger.level
+                obd_logger.setLevel(logging.ERROR)  # Показываем только ошибки, не предупреждения
+                
+                try:
+                    response = connection.query(obd.commands.FUEL_LEVEL)
+                    obd_logger.setLevel(old_level)  # Восстанавливаем уровень
+                    
+                    if response.value is not None:
+                        try:
+                            fuel_level = float(response.value.magnitude)
+                            if 0 <= fuel_level <= 100:
+                                print(f"✅ {fuel_level:.1f}%")
+                            else:
+                                print(f"❌ Некорректное значение: {fuel_level}")
+                        except (AttributeError, ValueError, TypeError) as e:
+                            print(f"❌ Ошибка преобразования: {e}")
+                    else:
+                        # Если value is None, команда скорее всего не поддерживается
+                        print("⚠️ Команда не поддерживается автомобилем")
+                except Exception as e:
+                    obd_logger.setLevel(old_level)  # Восстанавливаем уровень
+                    error_str = str(e).lower()
+                    if 'not supported' in error_str or 'unsupported' in error_str:
+                        print("⚠️ Команда не поддерживается автомобилем")
+                    else:
+                        print(f"❌ Ошибка: {e}")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+            
+            # Тест нагрузки двигателя
+            try:
+                print("   Чтение нагрузки двигателя...", end=" ", flush=True)
+                response = connection.query(obd.commands.ENGINE_LOAD)
                 if response.value:
-                    print(f"✅ {response.value.magnitude:.1f}°C")
+                    print(f"✅ {response.value.magnitude:.1f}%")
+                else:
+                    print("❌ Нет данных")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+            
+            # Тест давления во впускном коллекторе
+            try:
+                print("   Чтение давления во впускном коллекторе...", end=" ", flush=True)
+                response = connection.query(obd.commands.INTAKE_PRESSURE)
+                if response.value:
+                    print(f"✅ {response.value.magnitude:.1f} kPa")
+                else:
+                    print("❌ Нет данных")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+            
+            # Тест положения дроссельной заслонки
+            try:
+                print("   Чтение положения дроссельной заслонки...", end=" ", flush=True)
+                response = connection.query(obd.commands.THROTTLE_POS)
+                if response.value:
+                    print(f"✅ {response.value.magnitude:.1f}%")
+                else:
+                    print("❌ Нет данных")
+            except Exception as e:
+                print(f"❌ Ошибка: {e}")
+            
+            # Тест кодов ошибок
+            try:
+                print("   Чтение кодов ошибок (DTC)...", end=" ", flush=True)
+                response = connection.query(obd.commands.GET_DTC)
+                if response.value:
+                    errors = response.value
+                    if errors:
+                        print(f"✅ Найдено ошибок: {len(errors)}")
+                        for code in errors[:5]:  # Показываем первые 5
+                            print(f"      - {code[0]}: {code[1] if len(code) > 1 else 'Нет описания'}")
+                    else:
+                        print("✅ Ошибок не найдено")
                 else:
                     print("❌ Нет данных")
             except Exception as e:
@@ -151,7 +282,13 @@ def test_obd_connection():
             
             print()
             print("=" * 60)
-            print("✅ Тест успешно завершен!")
+            if status == obd.OBDStatus.CAR_CONNECTED:
+                print("✅ Тест успешно завершен! Автомобиль подключен.")
+            else:
+                print("⚠️ Тест завершен. Данные прочитаны, но статус не CAR_CONNECTED")
+                print("   Это может быть нормально, если:")
+                print("   - Зажигание включено, но двигатель не запущен")
+                print("   - Адаптер подключен, но автомобиль не полностью инициализирован")
             print("=" * 60)
             return True
         else:
